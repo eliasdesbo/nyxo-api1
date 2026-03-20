@@ -1,83 +1,47 @@
-from flask import Flask, request, jsonify, render_template_string, redirect, session
+from flask import Flask, request, render_template_string, redirect, session
 import sqlite3
 import os
-import datetime
+import random
+import string
 
 app = Flask(__name__)
-app.secret_key = "nyxo_secret_key"
+app.secret_key = "nyxo_secret"
 
-# 🔐 PANEL LOGIN DATEN
 USERNAME = "admin"
 PASSWORD = "nyxo"
 
-# 📦 DATABASE
+# 📦 DB
 def init_db():
     conn = sqlite3.connect("keys.db")
     c = conn.cursor()
-    c.execute("CREATE TABLE IF NOT EXISTS keys (key TEXT PRIMARY KEY, hwid TEXT)")
-    c.execute("CREATE TABLE IF NOT EXISTS logs (key TEXT, hwid TEXT, time TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS keys (key TEXT PRIMARY KEY)")
     conn.commit()
     conn.close()
 
 init_db()
 
-# 🔐 AUTH API
-@app.route("/auth", methods=["POST"])
-def auth():
-    data = request.json
-    key = data.get("key")
-    hwid = data.get("hwid")
+# 🔑 KEY GENERATOR
+def generate_key(length=12):
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
 
-    if key.lower() == "nyxo":
-        return jsonify({"status": "success"})
-
-    conn = sqlite3.connect("keys.db")
-    c = conn.cursor()
-
-    c.execute("SELECT hwid FROM keys WHERE key=?", (key,))
-    result = c.fetchone()
-
-    if not result:
-        conn.close()
-        return jsonify({"status": "invalid"})
-
-    saved = result[0]
-
-    if saved is None:
-        c.execute("UPDATE keys SET hwid=? WHERE key=?", (hwid, key))
-        conn.commit()
-    elif saved != hwid:
-        conn.close()
-        return jsonify({"status": "hwid_mismatch"})
-
-    # 📊 LOG SPEICHERN
-    c.execute("INSERT INTO logs (key, hwid, time) VALUES (?, ?, ?)", 
-              (key, hwid, str(datetime.datetime.now())))
-    conn.commit()
-
-    conn.close()
-    return jsonify({"status": "success"})
-
-# 🔐 LOGIN PAGE
-@app.route("/login", methods=["GET", "POST"])
+# 🔐 LOGIN
+@app.route("/login", methods=["GET","POST"])
 def login():
     if request.method == "POST":
-        user = request.form.get("user")
-        pw = request.form.get("pw")
-
-        if user == USERNAME and pw == PASSWORD:
+        if request.form.get("user") == USERNAME and request.form.get("pw") == PASSWORD:
             session["logged_in"] = True
             return redirect("/")
-        else:
-            return "Wrong Login"
+        return "Wrong Login ❌"
 
     return """
-    <h2>NYXO LOGIN</h2>
+    <body style="background:#0b0b0b;color:white;text-align:center;">
+    <h2>Login</h2>
     <form method="POST">
-        <input name="user" placeholder="Username"><br><br>
-        <input name="pw" type="password" placeholder="Password"><br><br>
-        <button>Login</button>
+    <input name="user"><br><br>
+    <input name="pw" type="password"><br><br>
+    <button>Login</button>
     </form>
+    </body>
     """
 
 # 🖥 PANEL
@@ -88,61 +52,53 @@ def panel():
 
     conn = sqlite3.connect("keys.db")
     c = conn.cursor()
-
     c.execute("SELECT * FROM keys")
     keys = c.fetchall()
-
-    c.execute("SELECT * FROM logs ORDER BY time DESC LIMIT 20")
-    logs = c.fetchall()
-
     conn.close()
 
     html = """
     <html>
     <head>
-    <title>NYXO ULTRA PANEL</title>
     <style>
-    body {background:#0f0f0f;color:#00ffcc;font-family:Arial;text-align:center;}
-    .box {background:#141414;margin:20px auto;padding:15px;border-radius:12px;width:320px;}
-    input {padding:10px;border-radius:8px;border:none;background:#1a1a1a;color:#00ffcc;}
-    button {padding:10px;border:none;border-radius:8px;background:#1f1f1f;color:#00ffcc;}
+    body {background:#0b0b0b;color:white;text-align:center;font-family:Arial;}
+    .box {background:#111;margin:20px auto;padding:15px;border-radius:10px;width:300px;}
+    button {padding:10px;border:none;border-radius:8px;background:#1f1f1f;color:white;}
+    input {padding:10px;border-radius:8px;border:none;background:#1a1a1a;color:white;}
     a {color:red;text-decoration:none;}
     </style>
     </head>
     <body>
 
-    <h1>NYXO ULTRA PANEL</h1>
+    <h1>NYXO PANEL</h1>
 
     <div class="box">
-        <form method="POST" action="/add">
-            <input name="key" placeholder="New Key">
-            <button>Add</button>
+        <form method="POST" action="/generate">
+            <button>Generate Key</button>
         </form>
     </div>
 
-    <h2>KEYS</h2>
+    <div class="box">
+        <form method="POST" action="/add">
+            <input name="key" placeholder="Custom Key">
+            <button>Add Key</button>
+        </form>
+    </div>
+
     {% for k in keys %}
     <div class="box">
-        <p><b>{{k[0]}}</b></p>
-        <p>HWID: {{k[1]}}</p>
+        <p>{{k[0]}}</p>
         <a href="/delete/{{k[0]}}">Delete</a>
     </div>
     {% endfor %}
 
-    <h2>LAST LOGS</h2>
-    {% for log in logs %}
-    <div class="box">
-        <p>Key: {{log[0]}}</p>
-        <p>HWID: {{log[1]}}</p>
-        <p>{{log[2]}}</p>
-    </div>
-    {% endfor %}
+    <br>
+    <a href="/logout">Logout</a>
 
     </body>
     </html>
     """
 
-    return render_template_string(html, keys=keys, logs=logs)
+    return render_template_string(html, keys=keys)
 
 # ➕ ADD KEY
 @app.route("/add", methods=["POST"])
@@ -155,7 +111,7 @@ def add():
     conn = sqlite3.connect("keys.db")
     c = conn.cursor()
     try:
-        c.execute("INSERT INTO keys (key, hwid) VALUES (?, NULL)", (key,))
+        c.execute("INSERT INTO keys (key) VALUES (?)", (key,))
         conn.commit()
     except:
         pass
@@ -163,7 +119,23 @@ def add():
 
     return redirect("/")
 
-# ❌ DELETE KEY
+# 🔑 GENERATE KEY
+@app.route("/generate", methods=["POST"])
+def generate():
+    if not session.get("logged_in"):
+        return redirect("/login")
+
+    key = generate_key()
+
+    conn = sqlite3.connect("keys.db")
+    c = conn.cursor()
+    c.execute("INSERT INTO keys (key) VALUES (?)", (key,))
+    conn.commit()
+    conn.close()
+
+    return redirect("/")
+
+# ❌ DELETE
 @app.route("/delete/<key>")
 def delete(key):
     if not session.get("logged_in"):
@@ -176,6 +148,12 @@ def delete(key):
     conn.close()
 
     return redirect("/")
+
+# 🔓 LOGOUT
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect("/login")
 
 # 🚀 START
 port = int(os.environ.get("PORT", 10000))
