@@ -14,7 +14,13 @@ PASSWORD = "nyxo"
 def init_db():
     conn = sqlite3.connect("keys.db")
     c = conn.cursor()
-  c.execute("CREATE TABLE IF NOT EXISTS keys (key TEXT PRIMARY KEY, hwid TEXT)") )
+
+    try:
+        c.execute("ALTER TABLE keys ADD COLUMN hwid TEXT")
+    except:
+        pass
+
+    c.execute("CREATE TABLE IF NOT EXISTS keys (key TEXT PRIMARY KEY, hwid TEXT)")
     conn.commit()
     conn.close()
 
