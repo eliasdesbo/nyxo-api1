@@ -14,7 +14,7 @@ PASSWORD = "nyxo"
 def init_db():
     conn = sqlite3.connect("keys.db")
     c = conn.cursor()
-    c.execute("CREATE TABLE IF NOT EXISTS keys (key TEXT PRIMARY KEY)")
+  c.execute("CREATE TABLE IF NOT EXISTS keys (key TEXT PRIMARY KEY, hwid TEXT)") )
     conn.commit()
     conn.close()
 
@@ -154,6 +154,36 @@ def delete(key):
 def logout():
     session.clear()
     return redirect("/login")
+
+from flask import jsonify
+
+@app.route("/auth", methods=["POST"])
+def auth():
+    data = request.json
+    key = data.get("key")
+    hwid = data.get("hwid")
+
+    conn = sqlite3.connect("keys.db")
+    c = conn.cursor()
+
+    c.execute("SELECT hwid FROM keys WHERE key=?", (key,))
+    result = c.fetchone()
+
+    if not result:
+        conn.close()
+        return jsonify({"status": "invalid"})
+
+    saved_hwid = result[0]
+
+    if saved_hwid is None:
+        c.execute("UPDATE keys SET hwid=? WHERE key=?", (hwid, key))
+        conn.commit()
+    elif saved_hwid != hwid:
+        conn.close()
+        return jsonify({"status": "hwid_mismatch"})
+
+    conn.close()
+    return jsonify({"status": "success"})
 
 # 🚀 START
 port = int(os.environ.get("PORT", 10000))
