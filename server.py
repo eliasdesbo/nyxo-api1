@@ -27,4 +27,10 @@ def auth():
 
     return jsonify({"status": "success"})
 
-app.run(host="0.0.0.0", port=10000)
+@app.route("/")
+def panel():
+    return "NYXO PANEL ONLINE"
+
+import os
+port = int(os.environ.get("PORT", 10000))
+app.run(host="0.0.0.0", port=port)
